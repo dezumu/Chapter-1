@@ -1,0 +1,39 @@
+#Used Julias script the csv file name was 1.csv however it had the microsof moniquer of /r so had to be fixed used the line
+
+tr -d '\r' < 1.csv > fixed.csv
+
+#this is the script used 
+
+#!/bin/bash
+
+# Usage: ./copy_no_overwrite.sh mapping.csv
+# You will need a csv file with oldname,newname where oldname and newname are the full file names including extensions. This csv needs to be in the directory with the files to rename. You $
+
+csv_file="$1"
+
+if [[ ! -f "$csv_file" ]]; then
+    echo "Error: CSV file not found."
+    exit 1
+fi
+
+while IFS=, read -r old new; do
+    [[ -z "$old" || -z "$new" ]] && continue
+
+    # Trim whitespace
+    old="$(echo "$old" | xargs)"
+    new="$(echo "$new" | xargs)"
+
+    if [[ ! -e "$old" ]]; then
+        echo "Warning: '$old' not found, skipping."
+        continue
+    fi
+
+    if [[ -e "$new" ]]; then
+        echo "Skipping: target '$new' already exists."
+        continue
+    fi
+
+    echo "Copying '$old' -> '$new'"
+    cp -- "$old" "$new"
+
+done < "$csv_file"

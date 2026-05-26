@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# Hybrid assembly pipeline with Unicycler
+# Input:
+#   sample_R1.fastq.gz
+#   sample_R2.fastq.gz
+#   nanopore.fastq.gz
+#
+# Output:
+#   unicycler_output/
+
+set -e
+
+############################
+# CONFIG
+############################
+
+THREADS=16
+
+R1="sample_R1.fastq.gz"
+R2="sample_R2.fastq.gz"
+LONG="nanopore.fastq.gz"
+
+OUTDIR="unicycler_output"
+
+############################
+# CREATE OUTPUT DIRS
+############################
+
+mkdir -p qc trimmed filtered logs
+
+############################
+# STEP 1: QC (optional)
+############################
+
+echo "Running FastQC..."
+
+fastqc $R1 $R2 $LONG -o qc/
+
+############################
+# STEP 2: TRIM ILLUMINA READS
+############################
+
+echo "Running fastp..."
+
+fastp \
+  -i $R1 \
+  -I $R2 \
+  -o trimmed/trimmed_R1.fastq.gz \
+  -O trimmed/trimmed_R2.fastq.gz \
+  --thread $THREADS \
+  --html logs/fastp.html \
+  --json logs/fastp.json
+
+############################
+# STEP 3: FILTER LONG READS
+############################
+
+echo "Filtering long reads..."
+
+filtlong \
+  --min_length 1000 \
+  $LONG > filtered/filtered_long.fastq
+
+gzip filtered/filtered_long.fastq
+
+############################
+# STEP 4: RUN UNICYCLER
+############################
+
+echo "Running Unicycler..."
+
+unicycler \
+  -1 trimmed/trimmed_R1.fastq.gz \
+  -2 trimmed/trimmed_R2.fastq.gz \
+  -l filtered/filtered_long.fastq.gz \
+  -o $OUTDIR \
+  -t $THREADS \
+  --mode normal
+
+############################
+# STEP 5: ASSEMBLY QC
+############################
+
+echo "Running QUAST..."
+
+quast \
+  $OUTDIR/assembly.fasta \
+  -o ${OUTDIR}/quast
+
+############################
+# DONE
+############################
+
+echo "Pipeline complete!"
+echo "Final assembly:"
+echo "${OUTDIR}/assembly.fasta"

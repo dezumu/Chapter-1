@@ -1,0 +1,61 @@
+#!/bin/bash
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=32GB
+#SBATCH --time=24:00:00
+
+set -e
+
+module load python/3.11.9
+eval "$(/spack/conda/miniconda3/4.12.0/bin/conda shell.bash hook)"
+conda activate hybrid
+
+cd /project2/julias21_1071/daosorio/daosorio/Chapter1/correctedsequences/realnames/RAW
+
+THREADS=16
+
+R1="SAUGUST148000225_R1.fastq.gz"
+R2="SAUGUST148000225_R2.fastq.gz"
+LONG="SAUGUST14800225.fastq.gz"
+
+mkdir -p trimmed filtered flye polish quast
+
+fastp \
+  -i $R1 \
+  -I $R2 \
+  -o trimmed/R1.fastq.gz \
+  -O trimmed/R2.fastq.gz \
+  --thread $THREADS
+
+filtlong \
+  --min_length 1000 \
+  $LONG > filtered/ont.fastq
+
+flye \
+  --nano-raw filtered/ont.fastq \
+  --out-dir flye \
+  --genome-size 5m \
+  --threads $THREADS
+
+minimap2 -x map-ont flye/assembly.fasta filtered/ont.fastq > polish/ont.paf
+
+racon filtered/ont.fastq polish/ont.paf flye/assembly.fasta > polish/racon.fasta
+
+bwa index polish/racon.fasta
+
+bwa mem -t $THREADS polish/racon.fasta trimmed/R1.fastq.gz trimmed/R2.fastq.gz | samtools sort -o polish/illumina.bam
+
+samtools index polish/illumina.bam
+
+export _JAVA_OPTIONS="-Xmx28g"
+
+pilon \
+  --genome polish/racon.fasta \
+  --frags polish/illumina.bam \
+  --output pilon_fixed \
+  --outdir polish \
+  --threads 16 \
+  --fix all
+
+quast polish/pilon_fixed.fasta -o quast
+
+echo "DONE  ^f^r polish/final_polished.fasta"
